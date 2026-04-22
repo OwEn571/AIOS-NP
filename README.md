@@ -94,7 +94,9 @@ flowchart LR
 
 ## 成品日报截图
 
-下面这张图直接来自当前成品日报 HTML 的真实截图：
+下面这张图直接来自当前成品日报
+[`output/新闻报_20260422_102214.html`](./output/新闻报_20260422_102214.html)
+的真实截图：
 
 ![AIOS-NP Daily Report Screenshot](./docs/assets/newsroom-report-screenshot.png)
 
