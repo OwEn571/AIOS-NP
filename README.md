@@ -92,11 +92,11 @@ flowchart LR
 5. `review`：执行审阅、优化与事实核查
 6. `report`：汇总为最终日报，输出 `txt / json / html`
 
-## 日报预览
+## 成品日报截图
 
-下面这张图基于当前真实日报 JSON 自动生成，用来帮助快速感知系统产出的形态与规模：
+下面这张图直接来自当前成品日报 HTML 的真实截图：
 
-![AIOS-NP Daily Report Preview](./docs/assets/newsroom-report-preview.png)
+![AIOS-NP Daily Report Screenshot](./docs/assets/newsroom-report-screenshot.png)
 
 ## 快速开始
 
