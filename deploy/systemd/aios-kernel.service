@@ -1,0 +1,16 @@
+[Unit]
+Description=AIOS Kernel Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/owen/AIOS-NP
+ExecStart=/bin/bash /home/ubuntu/owen/AIOS-NP/scripts/start_local_kernel.sh
+Restart=always
+RestartSec=5
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target

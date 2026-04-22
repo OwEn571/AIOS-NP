@@ -1,0 +1,7 @@
+requests
+platformdirs
+pydantic
+mcp
+datasets
+tavily-python
+autogen-agentchat

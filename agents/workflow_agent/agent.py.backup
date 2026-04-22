@@ -1,0 +1,839 @@
+import os
+import json
+import sys
+import re
+sys.path.append('/data/llm/AIOS-NP')
+
+from cerebrum.llm.apis import llm_chat_with_json_output, llm_chat
+from cerebrum.config.config_manager import config
+import sys
+sys.path.append('/data/llm/AIOS-NP/agents')
+from controversy_expert.agent import ControversyExpert
+from descript_agent.agent import DescriptAgent
+from ban_agent.agent import BanAgent
+from constructure_agent.agent import ConstructureAgent
+from fact_check_agent.agent import FactCheckAgent
+from final_judge_agent.agent import FinalJudgeAgent
+
+# 导入领域专家
+from social_affairs_expert.agent import SocialAffairsExpert
+from entertainment_culture_expert.agent import EntertainmentCultureExpert
+from business_economy_expert.agent import BusinessEconomyExpert
+from tech_innovation_expert.agent import TechInnovationExpert
+from livelihood_health_expert.agent import LivelihoodHealthExpert
+
+aios_kernel_url = config.get_kernel_url()
+
+class WorkflowAgent:
+    def __init__(self, agent_name):
+        self.agent_name = agent_name
+        self.current_news = ""
+        self.workflow_history = []
+        self.messages = []
+        self.config = self._load_config()
+        
+        # 初始化通用审阅agent
+        self.controversy_expert = ControversyExpert("controversy_expert")
+        self.descript_agent = DescriptAgent("descript_agent")
+        self.ban_agent = BanAgent("ban_agent")
+        self.constructure_agent = ConstructureAgent("constructure_agent")
+        self.fact_check_agent = FactCheckAgent("fact_check_agent")
+        self.final_judge_agent = FinalJudgeAgent("final_judge_agent")
+        
+        # 初始化领域专家
+        self.domain_experts = {
+            "社会热点与公共事务": SocialAffairsExpert("social_affairs_expert"),
+            "娱乐与文化": EntertainmentCultureExpert("entertainment_culture_expert"),
+            "商业与经济": BusinessEconomyExpert("business_economy_expert"),
+            "科技与创新": TechInnovationExpert("tech_innovation_expert"),
+            "民生与健康": LivelihoodHealthExpert("livelihood_health_expert"),
+            "争议事件": ControversyExpert("controversy_expert")
+        }
+        
+    def _load_config(self):
+        script_path = os.path.abspath(__file__)
+        script_dir = os.path.dirname(script_path)
+        config_file = os.path.join(script_dir, "config.json")
+        with open(config_file, "r", encoding='utf-8') as f:
+            config = json.load(f)
+        return config
+    
+    def _read_news_file(self, file_path):
+        """读取新闻文件内容"""
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read().strip()
+            return content
+        except Exception as e:
+            print(f"❌ 读取新闻文件失败: {e}")
+            return None
+    
+    def _load_search_data(self):
+        """加载搜索数据"""
+        try:
+            # 尝试从当前新闻文件路径推断搜索文件路径
+            if hasattr(self, 'current_news_file') and self.current_news_file:
+                # 从新闻文件路径推断搜索文件路径
+                news_file = self.current_news_file
+                if '_news.txt' in news_file:
+                    search_file = news_file.replace('_news.txt', '_search.txt')
+                else:
+                    # 默认路径
+                    search_file = "/data/llm/AIOS-NP/intermediate/争议事件_0_search.txt"
+            else:
+                # 默认路径
+                search_file = "/data/llm/AIOS-NP/intermediate/争议事件_0_search.txt"
+            
+            with open(search_file, 'r', encoding='utf-8') as f:
+                content = f.read().strip()
+            print(f"📚 成功加载搜索数据: {search_file}")
+            return content
+        except Exception as e:
+            print(f"⚠️ 加载搜索数据失败: {e}")
+            return "无搜索数据"
+    
+    def _get_final_news_content_from_track(self, news_file_path):
+        """从track文件中获取最后一次处理的新闻内容"""
+        try:
+            # 构建track文件路径
+            if '_news.txt' in news_file_path:
+                track_file = news_file_path.replace('_news.txt', '_track.txt')
+            else:
+                track_file = news_file_path.replace('.txt', '_track.txt')
+            
+            if not os.path.exists(track_file):
+                print(f"⚠️ Track文件不存在: {track_file}，使用当前新闻内容")
+                return self.current_news
+            
+            # 读取track文件，获取最后一次处理的结果
+            with open(track_file, 'r', encoding='utf-8') as f:
+                track_content = f.read()
+            
+            # 查找最后一次处理的结果（最后一个"处理结果:"部分）
+            results = re.findall(r'处理结果:\s*\n(.*?)(?=\n\n|$)', track_content, re.DOTALL)
+            
+            if results:
+                final_result = results[-1].strip()
+                print(f"📰 从track文件获取最终新闻内容: {len(final_result)} 字符")
+                return final_result
+            else:
+                print(f"⚠️ 无法从track文件提取结果，使用当前新闻内容")
+                return self.current_news
+                
+        except Exception as e:
+            print(f"⚠️ 从track文件获取新闻内容失败: {e}，使用当前新闻内容")
+            return self.current_news
+    
+    def analyze_news_status(self, action_count=None):
+        """分析当前新闻状态，决定下一步处理"""
+        if action_count is None:
+            action_count = {}
+        
+        # 可用的agent列表（每个agent只能执行一次）
+        available_agents = []
+        agent_descriptions = []
+        
+        if action_count.get("controversy_expert", 0) == 0:
+            available_agents.append("controversy_expert")
+            agent_descriptions.append("1. controversy_expert - 优化争议事件新闻的表达和结构")
+        
+        if action_count.get("descript_agent", 0) == 0:
+            available_agents.append("descript_agent")
+            agent_descriptions.append("2. descript_agent - 优化新闻表达和语言风格")
+        
+        if action_count.get("ban_agent", 0) == 0:
+            available_agents.append("ban_agent")
+            agent_descriptions.append("3. ban_agent - 检查并修正敏感内容")
+        
+        if action_count.get("constructure_agent", 0) == 0:
+            available_agents.append("constructure_agent")
+            agent_descriptions.append("4. constructure_agent - 优化新闻结构和逻辑")
+        
+        if action_count.get("fact_check_agent", 0) == 0:
+            available_agents.append("fact_check_agent")
+            agent_descriptions.append("5. fact_check_agent - 对比原始资料检查新闻中的事实准确性")
+        
+        if not available_agents:
+            print("✅ 所有agent都已处理过，准备进入最终检查")
+            return {
+                "recommended_agent": "",
+                "processing_instruction": "",
+                "is_ready_for_judge": True
+            }
+        
+        prompt = f"""作为新闻审阅专家，请分析当前新闻状态并决定下一步处理：
+
+当前新闻内容：
+{self.current_news}
+
+可用的处理agent：
+{chr(10).join(agent_descriptions)}
+
+重要规则：
+1. 每个agent只能被选择一次
+2. 强烈优先选择未处理过的agent，避免重复选择已处理过的agent
+3. 除非迫不得已，不要选择已经处理过的agent
+4. 优先选择执行次数少的agent
+
+请返回JSON格式的分析结果：
+{{
+    "analysis": "对当前新闻状态的分析",
+    "recommended_agent": "推荐的agent名称（从可用列表中选择一个，或空字符串表示无需进一步处理）",
+    "reason": "选择该agent的原因",
+    "processing_instruction": "给该agent的具体处理指令",
+            "is_ready_for_judge": false
+        }}
+        
+        注意：
+1. 如果新闻质量已经很好，可以设置is_ready_for_judge为true
+2. 只返回JSON格式，不要包含其他文字"""
+        
+        try:
+            response = llm_chat_with_json_output(
+            agent_name=self.agent_name,
+                messages=[{"role": "user", "content": prompt}],
+            base_url=aios_kernel_url,
+            )
+            
+            if response and "response" in response:
+                result = response["response"]
+                print(f"📊 分析结果: {result}")
+                return result
+            else:
+                print("⚠️ 分析失败，使用默认处理")
+                return {
+                    "recommended_agent": "descript_agent" if "descript_agent" in available_agents else "",
+                    "processing_instruction": "优化新闻表达",
+                    "is_ready_for_judge": False
+                }
+                
+        except Exception as e:
+            print(f"❌ 分析新闻状态失败: {e}")
+            return {
+                "recommended_agent": "descript_agent" if "descript_agent" in available_agents else "",
+                "processing_instruction": "优化新闻表达",
+                "is_ready_for_judge": False
+            }
+    
+    def call_agent(self, agent_name, processing_instruction=""):
+        """调用指定的agent处理新闻"""
+        try:
+            print(f"🔄 调用 {agent_name} 处理新闻...")
+            
+            if agent_name == "controversy_expert":
+                optimized_news = self.controversy_expert.run(
+                    self.current_news, 
+                    processing_instruction
+                )
+            elif agent_name == "descript_agent":
+                optimized_news = self.descript_agent.run(
+                    self.current_news, 
+                    processing_instruction
+                )
+            elif agent_name == "ban_agent":
+                optimized_news = self.ban_agent.run(
+                    self.current_news, 
+                    processing_instruction
+                )
+            elif agent_name == "constructure_agent":
+                optimized_news = self.constructure_agent.run(
+                    self.current_news, 
+                    processing_instruction
+                )
+            elif agent_name == "fact_check_agent":
+                search_data = self._load_search_data()
+                optimized_news = self.fact_check_agent.run(
+                    self.current_news, 
+                    search_data,
+                    processing_instruction
+                )
+            else:
+                print(f"⚠️ 未知agent: {agent_name}")
+                return None
+            
+            self.current_news = optimized_news
+            self.save_track(f"{agent_name}处理", optimized_news)
+            print(f"✅ {agent_name} 处理完成")
+            return optimized_news
+            
+        except Exception as e:
+            print(f"❌ 调用 {agent_name} 失败: {e}")
+            return None
+    
+    def call_final_judge_agent(self):
+        """调用最终评审agent"""
+        try:
+            print("⚖️ 调用最终评审agent...")
+            judge_result = self.final_judge_agent.run(self.current_news)
+            return judge_result
+        except Exception as e:
+            print(f"❌ 调用最终评审agent失败: {e}")
+            return None
+    
+    def save_track(self, action, result):
+        """保存处理轨迹"""
+        self.workflow_history.append({
+            "action": action,
+            "result": result,
+            "timestamp": str(os.times())
+        })
+    
+    def _save_track_file(self, news_file_path, iteration, agent_name, result, action, current_news_content):
+        """保存处理轨迹到文件"""
+        try:
+            # 构建track文件路径
+            if '_news.txt' in news_file_path:
+                track_file = news_file_path.replace('_news.txt', '_track.txt')
+            else:
+                track_file = news_file_path.replace('.txt', '_track.txt')
+            
+            # 清理result中的think标签
+            cleaned_result = self._clean_llm_output(result)
+            
+            # 构建track内容
+            track_content = f"""
+=== 第 {iteration} 轮审阅 ===
+Agent: {agent_name}
+操作: {action}
+处理结果:
+{cleaned_result}
+
+当前新闻内容:
+{current_news_content}
+
+"""
+            
+            # 追加到track文件
+            with open(track_file, 'a', encoding='utf-8') as f:
+                f.write(track_content)
+            
+            print(f"📝 审阅过程已保存: {track_file}")
+            
+        except Exception as e:
+            print(f"⚠️ 保存track文件失败: {e}")
+    
+    def _clean_llm_output(self, text):
+        """清理LLM输出，移除think标签和优化说明"""
+        if not text:
+            return text
+        
+        # 移除think标签
+        text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
+        # 移除其他标签
+        text = re.sub(r'<[^>]+>', '', text)
+        # 移除优化说明
+        text = re.sub(r'（优化说明：.*?）', '', text, flags=re.DOTALL)
+        text = re.sub(r'\(优化说明：.*?\)', '', text, flags=re.DOTALL)
+        text = re.sub(r'（注：.*?）', '', text, flags=re.DOTALL)
+        text = re.sub(r'\(注：.*?\)', '', text, flags=re.DOTALL)
+        # 清理多余换行
+        text = re.sub(r'\n\s*\n\s*\n', '\n\n', text)
+        return text.strip()
+    
+    def run_workflow(self, news_file_path):
+        """运行新闻审阅工作流"""
+        print("🚀 开始新闻审议工作流...")
+        print("=" * 50)
+        
+        # 清理track文件
+        self._clean_track_file(news_file_path)
+        
+        # 读取新闻内容
+        self.current_news = self._read_news_file(news_file_path)
+        if not self.current_news:
+            return {"status": "failed", "result": "无法读取新闻文件"}
+        
+        print(f"📰 新闻内容长度: {len(self.current_news)} 字符")
+        
+        # 设置当前新闻文件路径，用于加载搜索数据
+        self.current_news_file = news_file_path
+        
+        action_count = {}
+        iteration = 0
+        max_iterations = 10  # 设置最大迭代次数防止无限循环
+        
+        while iteration < max_iterations:
+            iteration += 1
+            print(f"\n🔄 第 {iteration} 轮审阅...")
+            
+            # 分析新闻状态
+            analysis = self.analyze_news_status(action_count)
+            recommended_agent = analysis.get("recommended_agent", "")
+            processing_instruction = analysis.get("processing_instruction", "")
+            is_ready_for_judge = analysis.get("is_ready_for_judge", False)
+            
+            if is_ready_for_judge:
+                print("✅ 新闻质量达到要求，进行事实核查...")
+                # 先进行事实核查
+                print("🔍 强制进行事实核查...")
+                search_data = self._load_search_data()
+                
+                # 确保使用干净的最终版新闻内容（从track文件获取最后一次处理结果）
+                final_news_content = self._get_final_news_content_from_track(news_file_path)
+                
+                fact_checked_news = self.fact_check_agent.run(
+                    final_news_content, 
+                    search_data,
+                    "对比原始资料检查新闻中的事实准确性，去除幻觉内容"
+                )
+                self.current_news = fact_checked_news
+                self._save_track_file(news_file_path, iteration, "fact_check_agent", fact_checked_news, "事实核查", self.current_news)
+                
+                print("✅ 事实核查完成，进行最终检查...")
+                # 调用final_judge_agent
+                judge_result = self.call_final_judge_agent()
+                print(f"📊 质量检查结果: {judge_result}")
+                
+                # 解析judge结果
+                try:
+                    if isinstance(judge_result, dict) and "response" in judge_result:
+                        response_text = judge_result["response"]["response_message"]
+                        print(f"🔍 原始response_text: {response_text[:200]}...")
+                        
+                        # 移除think标签
+                        response_text = re.sub(r'<think>.*?</think>', '', response_text, flags=re.DOTALL)
+                        
+                        # 尝试多种方式提取JSON
+                        judge_data = None
+                        
+                        # 方法1: 查找```json块
+                        json_match = re.search(r'```json\s*(\{.*?\})\s*```', response_text, re.DOTALL)
+                        if json_match:
+                            try:
+                                judge_data = json.loads(json_match.group(1))
+                                print("✅ 通过```json块解析成功")
+                            except json.JSONDecodeError as e:
+                                print(f"⚠️ ```json块解析失败: {e}")
+                        
+                        # 方法2: 查找纯JSON（没有```包围）
+                        if judge_data is None:
+                            json_match = re.search(r'\{[^{}]*"meets_requirements"[^{}]*\}', response_text, re.DOTALL)
+                            if json_match:
+                                try:
+                                    judge_data = json.loads(json_match.group(0))
+                                    print("✅ 通过纯JSON解析成功")
+                                except json.JSONDecodeError as e:
+                                    print(f"⚠️ 纯JSON解析失败: {e}")
+                        
+                        # 方法3: 查找第一个完整的JSON对象
+                        if judge_data is None:
+                            json_match = re.search(r'\{.*?"meets_requirements".*?\}', response_text, re.DOTALL)
+                            if json_match:
+                                try:
+                                    judge_data = json.loads(json_match.group(0))
+                                    print("✅ 通过完整JSON解析成功")
+                                except json.JSONDecodeError as e:
+                                    print(f"⚠️ 完整JSON解析失败: {e}")
+                        
+                        if judge_data and judge_data.get("meets_requirements", False):
+                            print("✅ 新闻质量检查通过！")
+                            # 保存最终结果
+                            final_news = self._clean_llm_output(self.current_news)
+                            self._save_track_file(news_file_path, iteration + 1, "final_judge_agent", final_news, "最终质量检查通过", self.current_news)
+                            
+                            # 保存reviewed文件
+                            reviewed_file = news_file_path.replace("_news.txt", "_reviewed.txt")
+                            with open(reviewed_file, 'w', encoding='utf-8') as f:
+                                f.write(final_news)
+                            print(f"✅ 审阅完成，结果已保存: {reviewed_file}")
+                            
+                            return {
+                                "status": "success",
+                                "result": "新闻审议完成",
+                                "final_news": final_news,
+                                "reviewed_file": reviewed_file
+                            }
+                        else:
+                            print("❌ 新闻质量检查未通过，继续优化...")
+                            self._save_track_file(news_file_path, iteration + 1, "final_judge_agent", "质量检查未通过", "最终质量检查", self.current_news)
+                            continue
+                    else:
+                        print("❌ 无法解析judge结果，继续优化...")
+                        continue
+                        
+                except Exception as e:
+                    print(f"❌ 解析judge结果失败: {e}")
+                    continue
+            
+            elif recommended_agent:
+                # 调用推荐的agent
+                optimized_news = self.call_agent(recommended_agent, processing_instruction)
+                if optimized_news:
+                    action_count[recommended_agent] = action_count.get(recommended_agent, 0) + 1
+                    self._save_track_file(news_file_path, iteration, recommended_agent, optimized_news, f"{recommended_agent}处理", self.current_news)
+                else:
+                    print(f"❌ {recommended_agent} 处理失败")
+                    break
+            else:
+                print("✅ 无需进一步处理，准备进入质量检查...")
+                    is_ready_for_judge = True
+                
+                if is_ready_for_judge:
+                    print("✅ 新闻质量达到要求，进行事实核查...")
+                    # 先进行事实核查
+                    print("🔍 强制进行事实核查...")
+                    search_data = self._load_search_data()
+                    
+                    # 确保使用干净的最终版新闻内容（从track文件获取最后一次处理结果）
+                    final_news_content = self._get_final_news_content_from_track(news_file_path)
+                    
+                    fact_checked_news = self.fact_check_agent.run(
+                        final_news_content, 
+                        search_data,
+                        "对比原始资料检查新闻中的事实准确性，去除幻觉内容"
+                    )
+                    self.current_news = fact_checked_news
+                    self.save_track("事实核查", fact_checked_news)
+                    
+                    print("✅ 事实核查完成，进行最终检查...")
+                    # 调用final_judge_agent
+                    judge_result = self.call_final_judge_agent()
+                    print(f"📊 质量检查结果: {judge_result}")
+                    
+                    # 解析judge结果
+                    try:
+                        if isinstance(judge_result, dict) and "response" in judge_result:
+                            response_text = judge_result["response"]["response_message"]
+                            print(f"🔍 原始response_text: {response_text[:200]}...")
+                            
+                            # 移除think标签
+                            response_text = re.sub(r'<think>.*?</think>', '', response_text, flags=re.DOTALL)
+                            
+                            # 尝试多种方式提取JSON
+                            judge_data = None
+                            
+                            # 方法1: 查找```json块
+                            json_match = re.search(r'```json\s*(\{.*?\})\s*```', response_text, re.DOTALL)
+                            if json_match:
+                                try:
+                                    judge_data = json.loads(json_match.group(1))
+                                    print("✅ 通过```json块解析成功")
+                                except json.JSONDecodeError as e:
+                                    print(f"⚠️ ```json块解析失败: {e}")
+                            
+                            # 方法2: 查找纯JSON（没有```包围）
+                            if judge_data is None:
+                                json_match = re.search(r'\{[^{}]*"meets_requirements"[^{}]*\}', response_text, re.DOTALL)
+                                if json_match:
+                                    try:
+                                        judge_data = json.loads(json_match.group(0))
+                                        print("✅ 通过纯JSON解析成功")
+                                    except json.JSONDecodeError as e:
+                                        print(f"⚠️ 纯JSON解析失败: {e}")
+                            
+                            # 方法3: 查找第一个完整的JSON对象
+                            if judge_data is None:
+                                json_match = re.search(r'\{.*?"meets_requirements".*?\}', response_text, re.DOTALL)
+                                if json_match:
+                                    try:
+                                        judge_data = json.loads(json_match.group(0))
+                                        print("✅ 通过完整JSON解析成功")
+                                    except json.JSONDecodeError as e:
+                                        print(f"⚠️ 完整JSON解析失败: {e}")
+                            
+                            if judge_data and judge_data.get("meets_requirements", False):
+                                print("✅ 新闻质量检查通过！")
+                                # 保存最终结果
+                                final_news = self._clean_llm_output(self.current_news)
+                                self._save_track_file(news_file_path, iteration + 1, "final_judge_agent", final_news, "最终质量检查通过", self.current_news)
+                                
+                                # 保存reviewed文件
+                                reviewed_file = news_file_path.replace("_news.txt", "_reviewed.txt")
+                                with open(reviewed_file, 'w', encoding='utf-8') as f:
+                                    f.write(final_news)
+                                print(f"✅ 审阅完成，结果已保存: {reviewed_file}")
+                                
+                                return {
+                                    "status": "success",
+                                    "result": "新闻审议完成",
+                                    "final_news": final_news,
+                                    "reviewed_file": reviewed_file
+                                }
+                            else:
+                                print("❌ 新闻质量检查未通过，继续优化...")
+                                self._save_track_file(news_file_path, iteration + 1, "final_judge_agent", "质量检查未通过", "最终质量检查", self.current_news)
+                                continue
+                        else:
+                            print("❌ 无法解析judge结果，继续优化...")
+                            continue
+                            
+                    except Exception as e:
+                        print(f"❌ 解析judge结果失败: {e}")
+                        continue
+        
+        print("⚠️ 达到最大迭代次数，审阅结束")
+        return {"status": "failed", "result": "达到最大迭代次数"}
+    
+    def _clean_track_file(self, news_file_path):
+        """清理track文件"""
+        try:
+            if '_news.txt' in news_file_path:
+                track_file = news_file_path.replace('_news.txt', '_track.txt')
+            else:
+                track_file = news_file_path.replace('.txt', '_track.txt')
+            
+            if os.path.exists(track_file):
+                with open(track_file, 'w', encoding='utf-8') as f:
+                    f.write("")
+                print(f"🧹 已清理track文件: {track_file}")
+        except Exception as e:
+            print(f"⚠️ 清理track文件失败: {e}")
+    
+    def run_workflow_with_domain(self, news_file_path, domain):
+        """运行带领域专家的工作流"""
+        print(f"🚀 开始{domain}新闻审议工作流...")
+        print("=" * 50)
+        
+        # 清理track文件
+        self._clean_track_file(news_file_path)
+        
+        # 读取新闻内容
+        self.current_news = self._read_news_file(news_file_path)
+        if not self.current_news:
+            return {"status": "failed", "result": "无法读取新闻文件"}
+        
+        print(f"📰 新闻内容长度: {len(self.current_news)} 字符")
+        
+        # 设置当前新闻文件路径，用于加载搜索数据
+        self.current_news_file = news_file_path
+        
+        # 首先使用领域专家处理
+        if domain in self.domain_experts:
+            print(f"🎯 使用{domain}专家进行初步处理...")
+            domain_expert = self.domain_experts[domain]
+            self.current_news = domain_expert.run(self.current_news, f"作为{domain}专家，优化新闻内容")
+            self._save_track_file(news_file_path, 0, f"{domain}专家", self.current_news, f"{domain}专家处理", self.current_news)
+            print(f"✅ {domain}专家处理完成")
+        
+        # 然后使用通用agent进行进一步处理
+        action_count = {}
+        iteration = 0
+        max_iterations = 10
+        
+        while iteration < max_iterations:
+            iteration += 1
+            print(f"\n🔄 第 {iteration} 轮审阅...")
+            
+            # 分析新闻状态
+            analysis = self.analyze_news_status(action_count)
+            recommended_agent = analysis.get("recommended_agent", "")
+            processing_instruction = analysis.get("processing_instruction", "")
+            is_ready_for_judge = analysis.get("is_ready_for_judge", False)
+            
+            if is_ready_for_judge:
+                print("✅ 新闻质量达到要求，进行事实核查...")
+                # 先进行事实核查
+                print("🔍 强制进行事实核查...")
+                search_data = self._load_search_data()
+                
+                # 确保使用干净的最终版新闻内容（从track文件获取最后一次处理结果）
+                final_news_content = self._get_final_news_content_from_track(news_file_path)
+                
+                fact_checked_news = self.fact_check_agent.run(
+                    final_news_content, 
+                    search_data,
+                    "对比原始资料检查新闻中的事实准确性，去除幻觉内容"
+                )
+                self.current_news = fact_checked_news
+                self._save_track_file(news_file_path, iteration, "fact_check_agent", fact_checked_news, "事实核查", self.current_news)
+                
+                print("✅ 事实核查完成，进行最终检查...")
+                # 调用final_judge_agent
+                judge_result = self.call_final_judge_agent()
+                print(f"📊 质量检查结果: {judge_result}")
+                
+                # 解析judge结果
+                try:
+                    if isinstance(judge_result, dict) and "response" in judge_result:
+                        response_text = judge_result["response"]["response_message"]
+                        print(f"🔍 原始response_text: {response_text[:200]}...")
+                        
+                        # 移除think标签
+                        response_text = re.sub(r'<think>.*?</think>', '', response_text, flags=re.DOTALL)
+                        
+                        # 尝试多种方式提取JSON
+                        judge_data = None
+                        
+                        # 方法1: 查找```json块
+                        json_match = re.search(r'```json\s*(\{.*?\})\s*```', response_text, re.DOTALL)
+                        if json_match:
+                            try:
+                                judge_data = json.loads(json_match.group(1))
+                                print("✅ 通过```json块解析成功")
+                            except json.JSONDecodeError as e:
+                                print(f"⚠️ ```json块解析失败: {e}")
+                        
+                        # 方法2: 查找纯JSON（没有```包围）
+                        if judge_data is None:
+                            json_match = re.search(r'\{[^{}]*"meets_requirements"[^{}]*\}', response_text, re.DOTALL)
+                            if json_match:
+                                try:
+                                    judge_data = json.loads(json_match.group(0))
+                                    print("✅ 通过纯JSON解析成功")
+                                except json.JSONDecodeError as e:
+                                    print(f"⚠️ 纯JSON解析失败: {e}")
+                        
+                        # 方法3: 查找第一个完整的JSON对象
+                        if judge_data is None:
+                            json_match = re.search(r'\{.*?"meets_requirements".*?\}', response_text, re.DOTALL)
+                            if json_match:
+                                try:
+                                    judge_data = json.loads(json_match.group(0))
+                                    print("✅ 通过完整JSON解析成功")
+                                except json.JSONDecodeError as e:
+                                    print(f"⚠️ 完整JSON解析失败: {e}")
+                        
+                        if judge_data and judge_data.get("meets_requirements", False):
+                            print("✅ 新闻质量检查通过！")
+                            # 保存最终结果
+                            final_news = self._clean_llm_output(self.current_news)
+                            self._save_track_file(news_file_path, iteration + 1, "final_judge_agent", final_news, "最终质量检查通过", self.current_news)
+                            
+                            # 保存reviewed文件
+                            reviewed_file = news_file_path.replace("_news.txt", "_reviewed.txt")
+                            with open(reviewed_file, 'w', encoding='utf-8') as f:
+                                f.write(final_news)
+                            print(f"✅ 审阅完成，结果已保存: {reviewed_file}")
+                            
+                            return {
+                                "status": "success",
+                                "result": "新闻审议完成",
+                                "final_news": final_news,
+                                "reviewed_file": reviewed_file
+                            }
+                        else:
+                            print("❌ 新闻质量检查未通过，继续优化...")
+                            self._save_track_file(news_file_path, iteration + 1, "final_judge_agent", "质量检查未通过", "最终质量检查", self.current_news)
+                            continue
+                    else:
+                        print("❌ 无法解析judge结果，继续优化...")
+                        continue
+                        
+                except Exception as e:
+                    print(f"❌ 解析judge结果失败: {e}")
+                    continue
+            
+            elif recommended_agent:
+                # 调用推荐的agent
+                optimized_news = self.call_agent(recommended_agent, processing_instruction)
+                if optimized_news:
+                    action_count[recommended_agent] = action_count.get(recommended_agent, 0) + 1
+                    self._save_track_file(news_file_path, iteration, recommended_agent, optimized_news, f"{recommended_agent}处理", self.current_news)
+                else:
+                    print(f"❌ {recommended_agent} 处理失败")
+                    break
+            else:
+                print("✅ 无需进一步处理，准备进入质量检查...")
+                is_ready_for_judge = True
+                
+                if is_ready_for_judge:
+                    print("✅ 新闻质量达到要求，进行事实核查...")
+                    # 先进行事实核查
+                    print("🔍 强制进行事实核查...")
+                    search_data = self._load_search_data()
+                    
+                    # 确保使用干净的最终版新闻内容（从track文件获取最后一次处理结果）
+                    final_news_content = self._get_final_news_content_from_track(news_file_path)
+                    
+                    fact_checked_news = self.fact_check_agent.run(
+                        final_news_content, 
+                        search_data,
+                        "对比原始资料检查新闻中的事实准确性，去除幻觉内容"
+                    )
+                    self.current_news = fact_checked_news
+                    self.save_track("事实核查", fact_checked_news)
+                    
+                    print("✅ 事实核查完成，进行最终检查...")
+                    # 调用final_judge_agent
+                    judge_result = self.call_final_judge_agent()
+                    print(f"📊 质量检查结果: {judge_result}")
+                    
+                    # 解析judge结果
+                    try:
+                        if isinstance(judge_result, dict) and "response" in judge_result:
+                            response_text = judge_result["response"]["response_message"]
+                            print(f"🔍 原始response_text: {response_text[:200]}...")
+                            
+                            # 移除think标签
+                            response_text = re.sub(r'<think>.*?</think>', '', response_text, flags=re.DOTALL)
+                            
+                            # 尝试多种方式提取JSON
+                            judge_data = None
+                            
+                            # 方法1: 查找```json块
+                            json_match = re.search(r'```json\s*(\{.*?\})\s*```', response_text, re.DOTALL)
+                            if json_match:
+                                try:
+                                    judge_data = json.loads(json_match.group(1))
+                                    print("✅ 通过```json块解析成功")
+                                except json.JSONDecodeError as e:
+                                    print(f"⚠️ ```json块解析失败: {e}")
+                            
+                            # 方法2: 查找纯JSON（没有```包围）
+                            if judge_data is None:
+                                json_match = re.search(r'\{[^{}]*"meets_requirements"[^{}]*\}', response_text, re.DOTALL)
+                                if json_match:
+                                    try:
+                                        judge_data = json.loads(json_match.group(0))
+                                        print("✅ 通过纯JSON解析成功")
+                                    except json.JSONDecodeError as e:
+                                        print(f"⚠️ 纯JSON解析失败: {e}")
+                            
+                            # 方法3: 查找第一个完整的JSON对象
+                            if judge_data is None:
+                                json_match = re.search(r'\{.*?"meets_requirements".*?\}', response_text, re.DOTALL)
+                                if json_match:
+                                    try:
+                                        judge_data = json.loads(json_match.group(0))
+                                        print("✅ 通过完整JSON解析成功")
+                                    except json.JSONDecodeError as e:
+                                        print(f"⚠️ 完整JSON解析失败: {e}")
+                            
+                            if judge_data and judge_data.get("meets_requirements", False):
+                                print("✅ 新闻质量检查通过！")
+                                # 保存最终结果
+                                final_news = self._clean_llm_output(self.current_news)
+                                self._save_track_file(news_file_path, iteration + 1, "final_judge_agent", final_news, "最终质量检查通过", self.current_news)
+                                
+                                # 保存reviewed文件
+                                reviewed_file = news_file_path.replace("_news.txt", "_reviewed.txt")
+                                with open(reviewed_file, 'w', encoding='utf-8') as f:
+                                    f.write(final_news)
+                                print(f"✅ 审阅完成，结果已保存: {reviewed_file}")
+        
+        return {
+                                    "status": "success",
+                                    "result": "新闻审议完成",
+                                    "final_news": final_news,
+                                    "reviewed_file": reviewed_file
+                                }
+                            else:
+                                print("❌ 新闻质量检查未通过，继续优化...")
+                                self._save_track_file(news_file_path, iteration + 1, "final_judge_agent", "质量检查未通过", "最终质量检查", self.current_news)
+                                continue
+                        else:
+                            print("❌ 无法解析judge结果，继续优化...")
+                            continue
+                            
+                    except Exception as e:
+                        print(f"❌ 解析judge结果失败: {e}")
+                        continue
+        
+        print("⚠️ 达到最大迭代次数，审阅结束")
+        return {"status": "failed", "result": "达到最大迭代次数"}
+
+def main():
+    agent = WorkflowAgent("workflow_agent")
+    
+    # 测试新闻文件
+    test_news_file = "/data/llm/AIOS-NP/intermediate/争议事件_0_news.txt"
+    
+    if os.path.exists(test_news_file):
+        result = agent.run_workflow(test_news_file)
+        print(f"\n🎯 处理完成!")
+        print(f"📊 处理结果: {result}")
+    else:
+        print(f"❌ 测试文件不存在: {test_news_file}")
+
+if __name__ == "__main__":
+    main()

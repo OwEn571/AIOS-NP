@@ -1,0 +1,10 @@
+{
+    "agent_name": "fact_check_agent",
+    "description": "事实核查专家，负责对比原始资料检查新闻中的事实准确性",
+    "capabilities": [
+        "事实核查",
+        "幻觉检测",
+        "信息验证",
+        "内容修正"
+    ]
+}

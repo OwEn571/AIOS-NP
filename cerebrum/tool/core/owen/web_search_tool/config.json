@@ -1,0 +1,15 @@
+{
+    "name": "web_search",
+    "description": [
+        "使用Tavily API进行网络搜索，传入API密钥和搜索查询，返回搜索结果"
+    ],
+    "meta": {
+        "author": "owen",
+        "version": "0.4.0",
+        "license": "CC0"
+    },
+    "build": {
+        "entry": "entry.py",
+        "module": "WebSearch"
+    }
+}

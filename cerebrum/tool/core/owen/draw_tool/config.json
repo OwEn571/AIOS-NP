@@ -1,0 +1,15 @@
+{
+    "name": "draw",
+    "description": [
+        "从52张扑克牌中随机抽取一张，确保不重复"
+    ],
+    "meta": {
+        "author": "owen",
+        "version": "0.0.3",
+        "license": "CC0"
+    },
+    "build": {
+        "entry": "entry.py",
+        "module": "Draw"
+    }
+}

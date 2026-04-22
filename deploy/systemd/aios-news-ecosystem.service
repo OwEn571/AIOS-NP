@@ -1,0 +1,16 @@
+[Unit]
+Description=AIOS News Ecosystem Service
+After=network-online.target aios-kernel.service
+Wants=network-online.target aios-kernel.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/owen/AIOS-NP
+ExecStart=/bin/bash /home/ubuntu/owen/AIOS-NP/scripts/start_news_ecosystem.sh
+Restart=always
+RestartSec=5
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target

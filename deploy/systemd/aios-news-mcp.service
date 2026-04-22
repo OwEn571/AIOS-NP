@@ -1,0 +1,16 @@
+[Unit]
+Description=AIOS Daily News MCP Service
+After=network-online.target aios-news-ecosystem.service
+Wants=network-online.target aios-news-ecosystem.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/owen/AIOS-NP
+ExecStart=/bin/bash /home/ubuntu/owen/AIOS-NP/scripts/start_news_mcp.sh
+Restart=always
+RestartSec=5
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target

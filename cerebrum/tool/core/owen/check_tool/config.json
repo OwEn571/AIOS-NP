@@ -1,0 +1,15 @@
+{
+    "name": "check",
+    "description": [
+        "查询当前点数，返回固定值15"
+    ],
+    "meta": {
+        "author": "owen",
+        "version": "0.0.3",
+        "license": "CC0"
+    },
+    "build": {
+        "entry": "entry.py",
+        "module": "Check"
+    }
+}

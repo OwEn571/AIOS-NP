@@ -1,0 +1,20 @@
+{
+    "name": "sort_agent",
+    "description": [
+        "一个用于对热榜数据进行分类整理的agent，支持将热点按照不同类别进行分类和保存"
+    ],
+    "tools": [],
+    "llm_config": {
+        "model": "QwQ-32B",
+        "max_tokens": 4000
+    },
+    "meta": {
+        "author": "owen",
+        "version": "0.0.1",
+        "license": "CC0"
+    },
+    "build": {
+        "entry": "agent.py",
+        "module": "SortAgent"
+    }
+}

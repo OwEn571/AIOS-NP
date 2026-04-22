@@ -1,0 +1,16 @@
+{
+    "agent_name": "entertainment_culture_expert",
+    "description": "娱乐与文化专家",
+    "capabilities": [
+        "娱乐价值分析",
+        "文化价值评估",
+        "艺术性分析",
+        "观赏性评估"
+    ],
+    "expertise_areas": [
+        "娱乐现象分析",
+        "文化传承评估",
+        "艺术价值判断",
+        "娱乐产业分析"
+    ]
+}

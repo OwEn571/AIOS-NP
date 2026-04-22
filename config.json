@@ -1,0 +1,52 @@
+{
+    "pipeline": {
+        "intermediate_dir": "./intermediate",
+        "output_dir": "./output",
+        "max_news_per_category": 3,
+        "parallel_workers": 3
+    },
+    "workflow": {
+        "stages": [
+            "hot_api",
+            "sort",
+            "search",
+            "generate",
+            "review",
+            "report"
+        ],
+        "parallel_domain_workers": 3,
+        "serial_domain_workers": 1
+    },
+    "hot_api": {
+        "platform": "all",
+        "platforms": ["bd", "wb", "zh", "dy", "blbl", "dycj", "xlcj", "itzj"],
+        "max_items_per_platform": 10,
+        "api_key_env": "ZH_API_KEY"
+    },
+    "sort_agent": {
+        "categories": [
+            "社会热点与公共事务",
+            "娱乐与文化",
+            "商业与经济", 
+            "科技与创新",
+            "民生与健康",
+            "争议事件"
+        ]
+    },
+    "web_search": {
+        "max_results_per_query": 5,
+        "api_key_env": "TAVILY_API_KEY"
+    },
+    "news_generation": {
+        "max_retries": 3,
+        "parallel_workers": 3
+    },
+    "workflow_review": {
+        "max_agent_executions": 2,
+        "enable_fact_check": true
+    },
+    "news_report": {
+        "max_news_per_category": 3,
+        "target_length": "2000-3000"
+    }
+}

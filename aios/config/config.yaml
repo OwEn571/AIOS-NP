@@ -1,0 +1,33 @@
+api_keys:
+  openai: ''
+  gemini: ''
+  groq: ''
+  anthropic: ''
+  huggingface:
+    auth_token: ''
+    cache_dir: ''
+llms:
+  models:
+  - name: Qwen3-8B
+    backend: vllm
+    hostname: http://localhost:5711/v1
+  router:
+    strategy: sequential
+    bootstrap_url: https://drive.google.com/file/d/1SF7MAvtnsED7KMeMdW3JDIWYNGPwIwL7/view
+  log_mode: console
+  use_context_manager: false
+memory:
+  log_mode: console
+storage:
+  root_dir: root
+  use_vector_db: true
+tool:
+  mcp_server_script_path: aios/tool/mcp_server.py
+scheduler:
+  log_mode: console
+agent_factory:
+  log_mode: console
+  max_workers: 64
+server:
+  host: localhost
+  port: 8001

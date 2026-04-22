@@ -1,0 +1,16 @@
+{
+    "name": "news_generation_agent",
+    "description": [
+        "一个用于生成新闻内容的agent，包含标题、摘要、内容生成和质量评审功能"
+    ],
+    "tools": [],
+    "meta": {
+        "author": "owen",
+        "version": "0.0.1",
+        "license": "CC0"
+    },
+    "build": {
+        "entry": "test_parallel_agents.py",
+        "module": "ParallelNewsTest"
+    }
+}

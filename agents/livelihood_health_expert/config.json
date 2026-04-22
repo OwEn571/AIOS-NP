@@ -1,0 +1,16 @@
+{
+    "agent_name": "livelihood_health_expert",
+    "description": "民生与健康专家",
+    "capabilities": [
+        "民生价值分析",
+        "健康风险评估",
+        "生活影响分析",
+        "社会关注度评估"
+    ],
+    "expertise_areas": [
+        "民生现象分析",
+        "健康问题评估",
+        "生活质量分析",
+        "社会安全评估"
+    ]
+}

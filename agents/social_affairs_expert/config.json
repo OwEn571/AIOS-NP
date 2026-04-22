@@ -1,0 +1,16 @@
+{
+    "agent_name": "social_affairs_expert",
+    "description": "社会热点与公共事务专家",
+    "capabilities": [
+        "社会热点分析",
+        "公共事务评估",
+        "政策影响分析",
+        "社会价值评估"
+    ],
+    "expertise_areas": [
+        "社会现象分析",
+        "公共政策解读",
+        "社会舆论评估",
+        "公共价值判断"
+    ]
+}

@@ -1,0 +1,15 @@
+{
+    "name": "hot_api",
+    "description": [
+        "获取各大平台热榜信息的工具，支持百度、微博、知乎、B站、抖音等平台"
+    ],
+    "meta": {
+        "author": "owen",
+        "version": "0.0.1",
+        "license": "CC0"
+    },
+    "build": {
+        "entry": "entry.py",
+        "module": "HotApiTool"
+    }
+}

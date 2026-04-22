@@ -1,0 +1,16 @@
+{
+    "agent_name": "business_economy_expert",
+    "description": "商业与经济专家",
+    "capabilities": [
+        "商业价值分析",
+        "经济指标评估",
+        "市场影响分析",
+        "投资价值评估"
+    ],
+    "expertise_areas": [
+        "商业现象分析",
+        "经济趋势判断",
+        "市场动态评估",
+        "投资机会分析"
+    ]
+}
